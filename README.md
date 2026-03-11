@@ -15,7 +15,6 @@ A full-stack, multi-role campus placement management system with real-time analy
 
 ```mermaid
 flowchart LR
-    flowchart LR
     %% Styling
     classDef admin fill:#0f172a,stroke:#fff,stroke-width:2px,color:#fff
     classDef company fill:#0284c7,stroke:#fff,stroke-width:2px,color:#fff
