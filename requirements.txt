@@ -1,0 +1,10 @@
+Flask
+Flask-SQLAlchemy
+Flask-Security-Too
+email-validator
+Flask-Cors
+Flask-Caching
+redis
+celery
+eventlet
+argon2-cffi
