@@ -86,26 +86,6 @@ flowchart LR
 - SQLite 3 for relational storage
 - Redis 7.0+ for caching and message brokering
 
-## Project Structure
-
-```
-Career Orbit/
-├── app/
-│   ├── controllers/       # API endpoints (auth, admin, company, user)
-│   ├── models/            # Database schemas (User, CompanyProfile, PlacementDrive, Application)
-│   ├── static/
-│   │   ├── js/            # Vue.js SPA (app.js)
-│   │   └── exports/       # Generated CSV/HTML reports
-│   ├── templates/         # Entry point (index.html)
-│   ├── tasks.py           # Celery background jobs
-│   ├── config.py          # Application & Celery configuration
-│   └── extensions.py      # Flask extensions (DB, Cache, Login)
-├── instance/              # SQLite database (auto-generated)
-├── run.py                 # Flask application entry point
-├── trigger_tasks.py       # Manual task testing script
-└── requirements.txt       # Python dependencies
-```
-
 ## API Overview
 
 ### Authentication (`/api/auth`)
