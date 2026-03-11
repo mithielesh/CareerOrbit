@@ -39,7 +39,8 @@ flowchart LR
     %% Student Flow
     Role -->|Student| SDash[Student Dash]:::student
     SDash --> Jobs[Live Job Board]:::student & History[My Pipeline]:::student
-    Jobs --> Apply{Apply (CGPA Check)}:::student -->|Success| History
+    %% THE FIX: Added quotes around the text with parentheses
+    Jobs --> Apply{"Apply (CGPA Check)"}:::student -->|Success| History
     History --> Export[CSV Export]:::student
 
     %% Background Tasks
