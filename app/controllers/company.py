@@ -6,6 +6,8 @@ from app.models.application import Application
 from app.models.user import User
 from app.extensions import db
 from datetime import datetime
+import json
+from app.tasks import export_company_pipeline_csv
 
 company_bp = Blueprint('company', __name__, url_prefix='/api/company')
 
@@ -161,3 +163,30 @@ def get_analytics():
         "pending": sum(1 for a in apps if a.status == 'Applied')
     }
     return jsonify(stats), 200
+
+@company_bp.route('/drive/<int:drive_id>/export', methods=['POST'])
+@login_required
+def export_pipeline(drive_id):
+    if current_user.role != 'company':
+        return jsonify({"error": "Unauthorized"}), 403
+    export_company_pipeline_csv.delay(drive_id, current_user.id)
+    return jsonify({"message": "Export started"}), 202
+
+@company_bp.route('/notifications', methods=['GET'])
+@login_required
+def get_company_notifications():
+    if current_user.role != 'company':
+        return jsonify({"error": "Unauthorized"}), 403
+    notifs = json.loads(current_user.notifications) if current_user.notifications else []
+    return jsonify({"notifications": notifs}), 200
+
+@company_bp.route('/notification/<int:notif_id>', methods=['DELETE'])
+@login_required
+def delete_company_notification(notif_id):
+    if current_user.role != 'company':
+        return jsonify({"error": "Unauthorized"}), 403
+    notifs = json.loads(current_user.notifications) if current_user.notifications else []
+    updated = [n for n in notifs if n.get('id') != notif_id]
+    current_user.notifications = json.dumps(updated)
+    db.session.commit()
+    return jsonify({"message": "Deleted"}), 200

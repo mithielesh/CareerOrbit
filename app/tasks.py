@@ -58,6 +58,54 @@ def export_student_applications_csv(student_id):
     
     return f"/static/exports/{filename}"
 
+@shared_task(ignore_result=False)
+def export_company_pipeline_csv(drive_id, user_id):
+    from app.models.application import Application
+    from app.models.user import User
+    from app.models.drive import PlacementDrive
+    from app.extensions import db
+    import csv, os, json
+    from datetime import datetime
+    from flask import current_app
+
+    user = db.session.get(User, user_id)
+    drive = db.session.get(PlacementDrive, drive_id)
+    if not user or not drive:
+        return
+
+    # Fetch all applications for this specific drive
+    apps = Application.query.filter_by(drive_id=drive_id).all()
+    
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = f"company_pipeline_{drive_id}_{timestamp}.csv"
+    filepath = os.path.join(current_app.root_path, 'static', 'exports', filename)
+    
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    with open(filepath, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Student Name', 'Student Email', 'Current Status', 'Applied On'])
+        
+        for app in apps:
+            student = db.session.get(User, app.student_id)
+            writer.writerow([
+                student.name if student else 'Unknown',
+                student.email if student else 'Unknown',
+                app.status,
+                app.application_date.strftime('%b %d, %Y')
+            ])
+            
+    # Send notification to the Company
+    notifs = json.loads(user.notifications) if user.notifications else []
+    notifs.insert(0, {
+        "id": int(datetime.now().timestamp()),
+        "message": f"Applicant Pipeline CSV for {drive.job_title} is ready.",
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "action_link": f"/static/exports/{filename}"
+    })
+    user.notifications = json.dumps(notifs)
+    db.session.commit()
+
 # ====================================================================
 # REQUIREMENT 5.a: SCHEDULED JOB (DAILY REMINDERS)
 # ====================================================================

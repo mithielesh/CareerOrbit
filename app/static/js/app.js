@@ -79,7 +79,7 @@ const App = {
                         loadDashboard();
                     }
                 } else { 
-                    // GOD MODE: Intercept Banned Students
+                    // Intercept Banned Students
                     if (data.error && data.error.toLowerCase().includes("deactivated")) {
                         showModal('Account Suspended', 'Your account has been restricted by the Institute Admin. Please contact the placement cell immediately.', 'danger');
                     } else {
@@ -97,41 +97,62 @@ const App = {
             user.isAuthenticated = false; 
             localStorage.clear(); 
             
-            // Clean state for next login
-            credentials.email = ''; 
-            credentials.password = ''; 
-            credentials.name = ''; 
-            credentials.hr_contact = ''; 
-            credentials.website = '';
-            isRegistering.value = false;
+            credentials.email = ''; credentials.password = ''; credentials.name = ''; 
+            credentials.hr_contact = ''; credentials.website = ''; isRegistering.value = false;
+            
+            studentState.profile = { cgpa: '', skills: '', resume_link: '' };
+            studentState.allDrives = []; studentState.applicationHistory = [];
+            companyState.stats = null; companyState.myDrives = []; companyState.applicants = [];
+            companyState.currentDriveTitle = ''; companyState.currentDriveId = null;
+            notifications.value = [];
         };
 
         // ==========================================
-        // 3. IN-APP NOTIFICATIONS
+        // 3. UNIVERSAL IN-APP NOTIFICATIONS
         // ==========================================
         const notifications = ref([]);
         const showNotifModal = ref(false);
 
+        const fetchNotifications = async () => {
+            if (user.role === 'admin') return;
+
+            if (user.role === 'student') {
+                // FORCE FETCH: Grab the fresh profile data which contains the notifications
+                try {
+                    const res = await fetch('/api/student/profile', { cache: 'no-store' });
+                    if (res.ok) {
+                        const data = await res.json();
+                        studentState.profile = data; // Keep profile data in sync
+                        notifications.value = data.notifications || []; // Populate the universal bell!
+                    }
+                } catch(e) { console.error(e); }
+            } 
+            else if (user.role === 'company') {
+                // Company uses the dedicated endpoint we built earlier
+                try {
+                    const res = await fetch('/api/company/notifications', { cache: 'no-store' });
+                    if (res.ok) {
+                        const data = await res.json();
+                        notifications.value = data.notifications || [];
+                    }
+                } catch(e) { console.error(e); }
+            }
+        };
+
         const openNotifications = async () => {
-            try {
-                const res = await fetch(`/api/student/notifications`);
-                if (res.ok) {
-                    const data = await res.json();
-                    notifications.value = data.notifications;
-                }
-                showNotifModal.value = true;
-            } catch(e) { console.error(e); }
+            await fetchNotifications();
+            showNotifModal.value = true; 
         };
         const closeNotifModal = () => { showNotifModal.value = false; };
+        
         const deleteNotification = async (notifId) => {
             // Instantly remove it from the UI for a snappy feel
-            if (studentState.profile && studentState.profile.notifications) {
-                studentState.profile.notifications = studentState.profile.notifications.filter(n => n.id !== notifId);
-            }
+            notifications.value = notifications.value.filter(n => n.id !== notifId);
             
             // Tell the Flask backend to delete it permanently
+            const endpoint = user.role === 'student' ? `/api/student/notification/${notifId}` : `/api/company/notification/${notifId}`;
             try {
-                await fetch(`/api/student/notification/${notifId}`, {
+                await fetch(endpoint, {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -141,7 +162,7 @@ const App = {
         };
 
         // ==========================================
-        // 4. ADMIN DASHBOARD (THE GOD MODE)
+        // 4. ADMIN DASHBOARD
         // ==========================================
         const adminState = reactive({ 
             view: 'approvals', 
@@ -251,7 +272,6 @@ const App = {
             } catch(e) { console.error(e); }
         };
 
-        // Admin Computed Searches
         const filteredAdminCompanies = computed(() => {
             return adminState.allCompanies.filter(c => c.name.toLowerCase().includes(adminState.companySearch.toLowerCase()));
         });
@@ -325,7 +345,6 @@ const App = {
         };
 
         const createDrive = async () => {
-            // STRICT COMPANY VALIDATION: Salary must be > 3 LPA
             if (parseFloat(companyState.newDrive.salary) <= 3.0) {
                 showModal('Invalid Salary', 'Institute policy dictates that the offered package must be strictly greater than 3.0 LPA.', 'danger');
                 return;
@@ -400,6 +419,18 @@ const App = {
             } catch(e) { console.error(e); }
         };
 
+        // Company CSV Export
+        const triggerCompanyExport = async () => {
+            if (!companyState.currentDriveId) return;
+            try {
+                const res = await fetch(`/api/company/drive/${companyState.currentDriveId}/export`, { method: 'POST' });
+                if (res.ok) {
+                    showModal('Export Started', 'Your ATS Pipeline CSV is being generated. The Alerts bell will update automatically in a moment.', 'success');
+                    setTimeout(() => { fetchNotifications(); }, 2000);
+                }
+            } catch(e) { console.error(e); }
+        };
+
         const pipelineNew = computed(() => companyState.applicants.filter(a => ['Applied', 'Shortlisted'].includes(a.status)));
         const pipelineInterviews = computed(() => companyState.applicants.filter(a => ['Round 1', 'Round 2', 'Final Round'].includes(a.status)));
         const pipelineDecisions = computed(() => companyState.applicants.filter(a => ['Selected', 'Rejected'].includes(a.status)));
@@ -448,7 +479,6 @@ const App = {
         const applyForDrive = async (drive) => {
             const p = studentState.profile;
             
-            // 1. STRICT COMPLETENESS CHECK (All fields must be filled)
             if (!p.resume_link || !p.cgpa || !p.skills || p.resume_link.trim() === '' || p.skills.trim() === '') {
                 showModal('Profile Incomplete', 'You must fill all profile fields (Marks, Degree/Branch, and Resume Link) before you can apply for any placement drive.', 'warning');
                 return;
@@ -456,19 +486,16 @@ const App = {
 
             const cgpaVal = parseFloat(p.cgpa);
 
-            // 2. STRICT RANGE CHECK: CGPA > 5 and <= 10
             if (isNaN(cgpaVal) || cgpaVal <= 5.0 || cgpaVal > 10.0) {
                 showModal('Invalid Marks', 'Your CGPA must be strictly greater than 5 and less than or equal to 10.', 'danger');
                 return;
             }
 
-            // 3. ATS HARD BLOCK: Minimum requirements
             if (cgpaVal < parseFloat(drive.min_cgpa)) {
                 showModal('ATS Rejected', `This role requires a minimum CGPA of ${drive.min_cgpa}. Your current CGPA is ${p.cgpa}. You are ineligible to apply.`, 'danger');
                 return;
             }
 
-            // 4. ATS SOFT WARNING: Skills / Branch Match
             const studentSkills = p.skills.toLowerCase();
             const driveSkills = drive.required_skills ? drive.required_skills.toLowerCase() : '';
             
@@ -507,10 +534,10 @@ const App = {
             try { 
                 const res = await fetch('/api/student/export', { method: 'POST' }); 
                 if (res.ok){
-                     showModal('Export Started', 'Check your notifications bell for the download link shortly.', 'success'); 
-                     setTimeout(() => {
-                        fetchStudentData();
-                    }, 2000);
+                     showModal('Export Started', 'Your CSV is generating. The Alerts bell will update automatically in a moment.', 'success'); 
+                     
+                     setTimeout(() => { fetchNotifications(); }, 2000);
+                     setTimeout(() => { fetchNotifications(); }, 4000);
                 }
             } catch (e) { console.error(e); } 
         };
@@ -523,15 +550,12 @@ const App = {
             return steps[status] || '16%';
         };
 
-        // --- Updated Smart Filtering Logic ---
         const todayStr = new Date().toISOString().split('T')[0];
 
-        // 1. Get IDs of every drive the student has touched
         const appliedDriveIds = computed(() => {
             return studentState.applicationHistory.map(app => app.drive_id);
         });
 
-        // 2. AVAILABLE: Started, Not Expired, AND NOT APPLIED
         const availableDrives = computed(() => {
             return studentState.allDrives.filter(d => 
                 d.start_date <= todayStr && 
@@ -540,7 +564,6 @@ const App = {
             );
         });
 
-        // 3. UPCOMING: Starts in future AND NOT APPLIED
         const upcomingDrives = computed(() => {
             return studentState.allDrives.filter(d => 
                 d.start_date > todayStr && 
@@ -548,7 +571,6 @@ const App = {
             );
         });
 
-        // 4. EXPIRED: Past deadline AND NOT APPLIED (The "Missed" ones)
         const expiredDrives = computed(() => {
             return studentState.allDrives.filter(d => 
                 d.application_deadline < todayStr && 
@@ -556,7 +578,6 @@ const App = {
             );
         });
 
-        // 5. APPLIED: If you applied, it lives here regardless of the date!
         const appliedDrives = computed(() => {
             return studentState.allDrives.filter(d => appliedDriveIds.value.includes(d.id)).map(d => {
                 const appInfo = studentState.applicationHistory.find(a => a.drive_id === d.id);
@@ -569,8 +590,8 @@ const App = {
 
         const loadDashboard = async () => { 
             if (user.role === 'admin') fetchAdminData(); 
-            if (user.role === 'company') { fetchMyDrives(); fetchCompanyAnalytics(); }
-            if (user.role === 'student') fetchStudentData(); 
+            if (user.role === 'company') { fetchMyDrives(); fetchCompanyAnalytics(); fetchNotifications(); }
+            if (user.role === 'student') { fetchStudentData(); fetchNotifications(); } 
         };
 
         onMounted(() => { if (user.isAuthenticated) loadDashboard(); });
@@ -580,7 +601,7 @@ const App = {
             modal, closeModal, confirmAction,
             notifications, showNotifModal, openNotifications, closeNotifModal, deleteNotification,
             adminState, updateStatus, fetchAdminData, toggleStudentBan, filteredAdminCompanies, filteredAdminStudents,
-            companyState, createDrive, fetchApplicants, handleStatusChange, submitInterviewDetails, pipelineNew, pipelineInterviews, pipelineDecisions,
+            companyState, createDrive, fetchApplicants, handleStatusChange, submitInterviewDetails, pipelineNew, pipelineInterviews, pipelineDecisions, triggerCompanyExport,
             studentState, updateProfile, applyForDrive, triggerExport, availableDrives, upcomingDrives, appliedDrives, expiredDrives, getPipelineWidth
         };
     },
@@ -598,10 +619,10 @@ const App = {
                         <button @click="openNotifications" class="btn btn-light border btn-sm me-3 position-relative rounded-3 px-3 fw-medium text-secondary">
                             <i class="bi bi-bell-fill me-1"></i> Alerts
                             
-                            <span v-if="studentState.profile && studentState.profile.notifications && studentState.profile.notifications.length > 0" 
+                            <span v-if="notifications && notifications.length > 0" 
                                   class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-2 border-white"
                                   style="font-size: 0.65rem;">
-                                {{ studentState.profile.notifications.length }}
+                                {{ notifications.length }}
                             </span>
                         </button>
                         
@@ -843,9 +864,9 @@ const App = {
 
                     <div v-if="user.role === 'company'">
                         <div class="mb-4 bg-white p-1 rounded-3 border d-inline-flex shadow-sm">
-                            <button class="btn border-0 rounded-2 fw-medium px-4" :class="companyState.view === 'analytics' ? 'btn-light text-dark' : 'bg-transparent text-secondary'" @click="companyState.view = 'analytics'">Analytics Hub</button>
-                            <button class="btn border-0 rounded-2 fw-medium px-4" :class="companyState.view === 'drives' ? 'btn-light text-dark' : 'bg-transparent text-secondary'" @click="companyState.view = 'drives'">Manage Drives</button>
-                            <button class="btn border-0 rounded-2 fw-medium px-4" :class="companyState.view === 'pipeline' ? 'btn-light text-dark' : 'bg-transparent text-secondary'" @click="companyState.view = 'pipeline'">Applicant Pipeline</button>
+                            <button class="btn border-0 rounded-2 fw-medium px-4" :class="companyState.view === 'analytics' ? 'btn-light text-dark' : 'bg-transparent text-secondary'" @click="companyState.view = 'analytics'; companyState.currentDriveTitle = ''; companyState.currentDriveId = null;">Analytics Hub</button>
+                            <button class="btn border-0 rounded-2 fw-medium px-4" :class="companyState.view === 'drives' ? 'btn-light text-dark' : 'bg-transparent text-secondary'" @click="companyState.view = 'drives'; companyState.currentDriveTitle = ''; companyState.currentDriveId = null;">Manage Drives</button>
+                            <button class="btn border-0 rounded-2 fw-medium px-4" :class="companyState.view === 'pipeline' ? 'btn-light text-dark' : 'bg-transparent text-secondary'" @click="companyState.view = 'pipeline'; companyState.currentDriveTitle = ''; companyState.currentDriveId = null;">Applicant Pipeline</button>
                         </div>
 
                         <div v-if="companyState.view === 'analytics' && companyState.stats" class="row">
@@ -958,7 +979,13 @@ const App = {
                                     <small class="text-uppercase fw-semibold text-secondary">ATS Pipeline</small>
                                     <h5 class="fw-bold text-dark mb-0">{{ companyState.currentDriveTitle || 'No Drive Selected' }}</h5>
                                 </div>
-                                <button class="btn btn-sm btn-outline-secondary rounded-3 px-3 fw-medium" @click="companyState.view = 'drives'">&larr; Back</button>
+                                <div v-if="companyState.currentDriveTitle" class="d-flex gap-2">
+                                    <button @click="triggerCompanyExport" class="btn btn-sm btn-outline-success rounded-3 px-3 fw-medium"><i class="bi bi-download me-1"></i> Export Pipeline</button>
+                                    <button class="btn btn-sm btn-outline-secondary rounded-3 px-3 fw-medium" @click="companyState.view = 'drives'; companyState.currentDriveTitle = ''; companyState.currentDriveId = null;">&larr; Back</button>
+                                </div>
+                                <div v-else>
+                                    <button class="btn btn-sm btn-outline-secondary rounded-3 px-3 fw-medium" @click="companyState.view = 'drives'">&larr; Back</button>
+                                </div>
                             </div>
                             
                             <div v-if="!companyState.currentDriveTitle" class="p-5 text-center text-secondary">
@@ -1302,12 +1329,12 @@ const App = {
                         </div>
                         
                         <div class="modal-body p-0 bg-light">
-                            <div v-if="!studentState.profile.notifications || studentState.profile.notifications.length === 0" class="text-center text-secondary py-5">
+                            <div v-if="!notifications || notifications.length === 0" class="text-center text-secondary py-5">
                                 <p class="mb-0 fw-medium">No new alerts right now.</p>
                             </div>
                             
                             <div class="list-group list-group-flush">
-                                <div v-for="n in studentState.profile.notifications" :key="n.id" class="list-group-item bg-white px-4 py-3 border-bottom">
+                                <div v-for="n in notifications" :key="n.id" class="list-group-item bg-white px-4 py-3 border-bottom">
                                     <div class="d-flex justify-content-between align-items-center mb-1">
                                         <small class="text-secondary fw-semibold" style="font-size: 0.7rem;">{{ n.date }}</small>
                                         <button @click="deleteNotification(n.id)" class="btn-close btn-close-sm shadow-none" style="font-size: 0.6rem;"></button>
