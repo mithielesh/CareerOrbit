@@ -79,9 +79,14 @@ const App = {
                         loadDashboard();
                     }
                 } else { 
-                    // Intercept Banned Students
-                    if (data.error && data.error.toLowerCase().includes("deactivated")) {
+                    // INTERCEPT LOGIC FOR BANS AND PENDING APPROVALS
+                    const errStr = (data.error || data.message || "").toLowerCase();
+                    if (errStr.includes("deactivated")) {
                         showModal('Account Suspended', 'Your account has been restricted by the Institute Admin. Please contact the placement cell immediately.', 'danger');
+                    } else if (errStr.includes("pending")) {
+                        showModal('Approval Pending', 'Your company registration is currently under review by the placement cell. You will be granted access once approved.', 'warning');
+                    } else if (errStr.includes("rejected")) {
+                        showModal('Registration Rejected', 'Your company profile has been declined or suspended by the administration. Please contact placement cell for clarification.', 'danger');
                     } else {
                         showModal('Error', data.error || data.message, 'danger'); 
                     }
@@ -117,18 +122,16 @@ const App = {
             if (user.role === 'admin') return;
 
             if (user.role === 'student') {
-                // FORCE FETCH: Grab the fresh profile data which contains the notifications
                 try {
                     const res = await fetch('/api/student/profile', { cache: 'no-store' });
                     if (res.ok) {
                         const data = await res.json();
-                        studentState.profile = data; // Keep profile data in sync
-                        notifications.value = data.notifications || []; // Populate the universal bell!
+                        studentState.profile = data; 
+                        notifications.value = data.notifications || []; 
                     }
                 } catch(e) { console.error(e); }
             } 
             else if (user.role === 'company') {
-                // Company uses the dedicated endpoint we built earlier
                 try {
                     const res = await fetch('/api/company/notifications', { cache: 'no-store' });
                     if (res.ok) {
@@ -146,19 +149,11 @@ const App = {
         const closeNotifModal = () => { showNotifModal.value = false; };
         
         const deleteNotification = async (notifId) => {
-            // Instantly remove it from the UI for a snappy feel
             notifications.value = notifications.value.filter(n => n.id !== notifId);
-            
-            // Tell the Flask backend to delete it permanently
             const endpoint = user.role === 'student' ? `/api/student/notification/${notifId}` : `/api/company/notification/${notifId}`;
             try {
-                await fetch(endpoint, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-            } catch (error) {
-                console.error("Failed to delete notification:", error);
-            }
+                await fetch(endpoint, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+            } catch (error) { console.error("Failed to delete notification:", error); }
         };
 
         // ==========================================
@@ -173,7 +168,8 @@ const App = {
             companySearch: '',
             allStudents: [],
             studentSearch: '',
-            globalAnalytics: null
+            globalAnalytics: null,
+            driveModal: { isVisible: false, data: null } // Added for Drive Details
         });
         
         let adminChartInstance = null;
@@ -235,11 +231,7 @@ const App = {
                         backgroundColor: '#0d6efd'
                     }]
                 },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false, 
-                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } 
-                }
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
             });
         };
 
@@ -256,8 +248,9 @@ const App = {
                     body: JSON.stringify({ status }) 
                 });
                 if (res.ok) { 
-                    showModal('Success', `${type} marked as ${status}`, 'success'); 
-                    fetchAdminData(); 
+                    showModal('Success', `${type} status updated to ${status}`, 'success'); 
+                    fetchAdminData();
+                    if (adminState.view === 'directories') fetchAdminDirectories(); // Refresh directory if open
                 }
             } catch(e) { console.error(e); }
         };
@@ -270,6 +263,15 @@ const App = {
                     fetchAdminDirectories();
                 }
             } catch(e) { console.error(e); }
+        };
+
+        const openDriveDetails = (drive) => {
+            adminState.driveModal.data = drive;
+            adminState.driveModal.isVisible = true;
+        };
+        const closeDriveDetails = () => {
+            adminState.driveModal.isVisible = false;
+            adminState.driveModal.data = null;
         };
 
         const filteredAdminCompanies = computed(() => {
@@ -419,7 +421,6 @@ const App = {
             } catch(e) { console.error(e); }
         };
 
-        // Company CSV Export
         const triggerCompanyExport = async () => {
             if (!companyState.currentDriveId) return;
             try {
@@ -600,7 +601,7 @@ const App = {
             user, credentials, isRegistering, toggleAuthMode, authAction, logout, 
             modal, closeModal, confirmAction,
             notifications, showNotifModal, openNotifications, closeNotifModal, deleteNotification,
-            adminState, updateStatus, fetchAdminData, toggleStudentBan, filteredAdminCompanies, filteredAdminStudents,
+            adminState, updateStatus, fetchAdminData, toggleStudentBan, filteredAdminCompanies, filteredAdminStudents, openDriveDetails, closeDriveDetails,
             companyState, createDrive, fetchApplicants, handleStatusChange, submitInterviewDetails, pipelineNew, pipelineInterviews, pipelineDecisions, triggerCompanyExport,
             studentState, updateProfile, applyForDrive, triggerExport, availableDrives, upcomingDrives, appliedDrives, expiredDrives, getPipelineWidth
         };
@@ -751,6 +752,7 @@ const App = {
                                             <div>
                                                 <strong class="d-block text-dark">{{ d.title }}</strong>
                                                 <small class="text-secondary">Company ID: {{ d.company_id }}</small>
+                                                <button @click="openDriveDetails(d)" class="btn btn-link btn-sm p-0 text-decoration-none ms-2" style="font-size: 0.75rem;">View Details</button>
                                             </div>
                                             <div class="d-flex gap-2">
                                                 <button @click="updateStatus('drive', d.id, 'Approved')" class="btn btn-sm btn-outline-success rounded-3 px-3 fw-medium">Approve</button>
@@ -777,13 +779,25 @@ const App = {
                                             <div v-for="c in filteredAdminCompanies" :key="c.id" class="list-group-item p-3 border-bottom">
                                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                                     <strong class="mb-0 text-dark">{{ c.name }}</strong>
-                                                    <span class="badge rounded-pill fw-normal" :class="c.status === 'Approved' ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'">{{ c.status }}</span>
+                                                    <span class="badge rounded-pill fw-normal" 
+                                                          :class="{
+                                                              'bg-success bg-opacity-10 text-success': c.status === 'Approved',
+                                                              'bg-warning bg-opacity-10 text-warning': c.status === 'Pending',
+                                                              'bg-danger bg-opacity-10 text-danger': c.status === 'Rejected'
+                                                          }">{{ c.status }}</span>
                                                 </div>
-                                                <div class="d-flex gap-2 text-secondary small">
-                                                    <span>Jobs: <strong>{{ c.stats.total_drives }}</strong></span> &bull;
-                                                    <span>Apps: <strong>{{ c.stats.applied }}</strong></span> &bull;
-                                                    <span>Int: <strong>{{ c.stats.interviews }}</strong></span> &bull;
-                                                    <span>Hired: <strong>{{ c.stats.hired }}</strong></span>
+                                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                                    <div class="d-flex gap-2 text-secondary small">
+                                                        <span>Jobs: <strong>{{ c.stats.total_drives }}</strong></span> &bull;
+                                                        <span>Apps: <strong>{{ c.stats.applied }}</strong></span> &bull;
+                                                        <span>Int: <strong>{{ c.stats.interviews }}</strong></span> &bull;
+                                                        <span>Hired: <strong>{{ c.stats.hired }}</strong></span>
+                                                    </div>
+                                                    <button @click="updateStatus('company', c.id, c.status === 'Approved' ? 'Rejected' : 'Approved')" 
+                                                        class="btn btn-sm rounded-3 fw-medium border" 
+                                                        :class="c.status === 'Approved' ? 'btn-light text-danger border-light' : 'btn-success text-white border-success'">
+                                                    {{ c.status === 'Approved' ? 'Reject' : 'Approve' }}
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -819,8 +833,8 @@ const App = {
                                                         <small class="d-block text-dark fw-medium">Max Sal: {{ s.stats.max_salary }} LPA</small>
                                                     </td>
                                                     <td class="align-middle pe-3 text-end">
-                                                        <button @click="toggleStudentBan(s.id)" class="btn btn-sm rounded-3 fw-medium border" :class="s.is_active ? 'btn-light text-danger border-light' : 'btn-danger text-white'">
-                                                            {{ s.is_active ? 'Suspend' : 'Unban' }}
+                                                        <button @click="toggleStudentBan(s.id)" class="btn btn-sm rounded-3 fw-medium border" :class="s.is_active ? 'btn-light text-danger border-light' : 'btn-success text-white border-success'">
+                                                            {{ s.is_active ? 'Ban' : 'Unban' }}
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -1044,7 +1058,7 @@ const App = {
                                     <div v-for="app in pipelineDecisions" :key="app.application_id" class="card mb-3 border shadow-sm rounded-3">
                                         <div class="card-body p-3 d-flex justify-content-between align-items-center" :class="app.status === 'Selected' ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10'">
                                             <strong class="d-block mb-0 text-dark">{{ app.student_name }}</strong>
-                                            <span class="badge rounded-pill fw-normal" :class="app.status === 'Selected' ? 'bg-success' : 'bg-danger'">{{ app.status === 'Selected' ? 'Hired' : 'Rejected' }}</span>
+                                            <span class="badge rounded-pill fw-normal" :class="app.status === 'Selected' ? 'bg-success text-success' : 'bg-danger text-danger'">{{ app.status === 'Selected' ? 'Hired' : 'Rejected' }}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1345,6 +1359,48 @@ const App = {
                                     </a>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="adminState.driveModal.isVisible && adminState.driveModal.data" class="modal fade show" style="display: block; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(2px); z-index: 1060;">
+                <div class="modal-dialog modal-dialog-centered modal-lg">
+                    <div class="modal-content border-0 shadow rounded-3 overflow-hidden">
+                        <div class="modal-header bg-light border-bottom px-4 py-3">
+                            <h6 class="modal-title fw-bold text-dark mb-0">Campaign Details: {{ adminState.driveModal.data.title }}</h6>
+                            <button class="btn-close shadow-none" @click="closeDriveDetails"></button>
+                        </div>
+                        <div class="modal-body p-4 bg-white">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <small class="text-secondary fw-semibold d-block">Eligibility</small>
+                                    <span class="text-dark">{{ adminState.driveModal.data.eligibility_criteria || 'N/A' }}</span>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <small class="text-secondary fw-semibold d-block">Key Skills</small>
+                                    <span class="text-dark">{{ adminState.driveModal.data.required_skills || 'N/A' }}</span>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <small class="text-secondary fw-semibold d-block">Min CGPA</small>
+                                    <span class="text-dark">{{ adminState.driveModal.data.min_cgpa }}</span>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <small class="text-secondary fw-semibold d-block">Package (LPA)</small>
+                                    <span class="text-dark">{{ adminState.driveModal.data.salary }}</span>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <small class="text-secondary fw-semibold d-block">Deadline</small>
+                                    <span class="text-dark">{{ adminState.driveModal.data.application_deadline }}</span>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <small class="text-secondary fw-semibold d-block mb-1">Job Description</small>
+                                <p class="text-dark small border p-3 rounded bg-light">{{ adminState.driveModal.data.job_description || 'No description provided.' }}</p>
+                            </div>
+                        </div>
+                        <div class="modal-footer border-top bg-light p-3 d-flex justify-content-end">
+                            <button class="btn btn-dark text-white px-4 rounded-2 fw-medium" @click="closeDriveDetails">Close Details</button>
                         </div>
                     </div>
                 </div>

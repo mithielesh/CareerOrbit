@@ -12,9 +12,22 @@ def login():
     user = User.query.filter_by(email=data.get('email')).first()
     
     if user and user.check_password(data.get('password')):
+        # 1. Global Ban Check (For Students & Suspended Companies)
         if not user.is_active:
             return jsonify({"error": "Account has been deactivated by Admin."}), 403
             
+        # 2. STRICT COMPANY LOCK: Block unapproved companies
+        if user.role == 'company':
+            # Local import to prevent circular import issues just in case
+            from app.models.company import CompanyProfile 
+            company = CompanyProfile.query.filter_by(user_id=user.id).first()
+            
+            if company:
+                if company.approval_status == 'Pending':
+                    return jsonify({"error": "Approval pending. Please wait for the admin to verify your profile."}), 403
+                elif company.approval_status == 'Rejected':
+                    return jsonify({"error": "Registration rejected. Your access has been revoked."}), 403
+        
         login_user(user)
         return jsonify({
             "message": "Login successful", 
