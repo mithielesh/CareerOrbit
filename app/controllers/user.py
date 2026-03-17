@@ -128,7 +128,7 @@ def manage_profile():
         return jsonify({"error": "Unauthorized"}), 403
     
     if request.method == 'GET':
-        # GOD MODE FIX: Parse the JSON string back into a Python list
+        # Parse the JSON string back into a Python list
         notifications_list = []
         if current_user.notifications:
             try:
