@@ -1073,7 +1073,7 @@ const App = {
                                 <button class="btn border-0 rounded-2 fw-medium px-4" :class="studentState.view === 'history' ? 'btn-light text-dark' : 'bg-transparent text-secondary'" @click="studentState.view = 'history'">My Pipeline</button>
                                 <button class="btn border-0 rounded-2 fw-medium px-4" :class="studentState.view === 'profile' ? 'btn-light text-dark' : 'bg-transparent text-secondary'" @click="studentState.view = 'profile'">Profile</button>
                             </div>
-                            <button @click="triggerExport" class="btn btn-outline-secondary btn-sm rounded-3 px-3 fw-medium me-1 bg-white">
+                            <button @click="triggerExport" class="btn btn-outline-secondary btn-sm rounded-3 px-3 fw-medium me-1">
                                 <i class="bi bi-download me-1"></i> Export Data
                             </button>
                          </div>
