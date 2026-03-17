@@ -17,4 +17,4 @@ class Application(db.Model):
     interview_date = db.Column(db.String(100), nullable=True)
     # ------------------------------
     
-    application_date = db.Column(db.DateTime, default=datetime.utcnow)
+    application_date = db.Column(db.DateTime, default=datetime.now)
