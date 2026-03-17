@@ -10,4 +10,4 @@ class CompanyProfile(db.Model):
     approval_status = db.Column(db.String(20), default='Pending') # 'Pending', 'Approved', 'Rejected'
     
     # Relationship to drives
-    drives = db.relationship('PlacementDrive', backref='company', lazy=True)
+    drives = db.relationship('PlacementDrive', backref='company', lazy=True, cascade='all, delete-orphan')
