@@ -755,8 +755,8 @@ const App = {
                                                 <button @click="openDriveDetails(d)" class="btn btn-link btn-sm p-0 text-decoration-none ms-2" style="font-size: 0.75rem;">View Details</button>
                                             </div>
                                             <div class="d-flex gap-2">
-                                                <button @click="updateStatus('drive', d.id, 'Approved')" class="btn btn-sm btn-outline-success rounded-3 px-3 fw-medium">Approve</button>
-                                                <button @click="updateStatus('drive', d.id, 'Rejected')" class="btn btn-sm btn-outline-danger rounded-3 px-3 fw-medium">Reject</button>
+                                                <button @click="updateStatus('Drive', d.id, 'Approved')" class="btn btn-sm btn-outline-success rounded-3 px-3 fw-medium">Approve</button>
+                                                <button @click="updateStatus('Drive', d.id, 'Rejected')" class="btn btn-sm btn-outline-danger rounded-3 px-3 fw-medium">Reject</button>
                                             </div>
                                         </li>
                                         <li v-if="adminState.pendingDrives.length === 0" class="list-group-item py-4 text-center text-secondary">
@@ -913,7 +913,7 @@ const App = {
                         <div v-if="companyState.view === 'drives'" class="row">
                             <div class="col-md-5 mb-4">
                                 <div class="card border shadow-sm rounded-3 bg-white p-4">
-                                    <h6 class="fw-bold mb-3 border-bottom pb-3 text-dark">Launch New Campaign</h6>
+                                    <h6 class="fw-bold mb-3 border-bottom pb-3 text-dark">Launch New Drive</h6>
                                     <form @submit.prevent="createDrive">
                                         <div class="mb-3">
                                             <label class="small fw-semibold text-secondary mb-1">Job Title</label>
@@ -964,7 +964,7 @@ const App = {
                             <div class="col-md-7 mb-4">
                                 <div class="card border shadow-sm rounded-3 bg-white">
                                     <div class="card-header bg-white border-bottom py-3">
-                                        <h6 class="fw-bold mb-0 text-dark">Active Campaigns</h6>
+                                        <h6 class="fw-bold mb-0 text-dark">Active Drives</h6>
                                     </div>
                                     <ul class="list-group list-group-flush pb-2">
                                         <li v-for="d in companyState.myDrives" :key="d.id" class="list-group-item d-flex justify-content-between align-items-center p-4 border-bottom">
@@ -980,7 +980,7 @@ const App = {
                                             </button>
                                         </li>
                                         <li v-if="companyState.myDrives.length === 0" class="list-group-item py-5 text-center text-secondary">
-                                            No campaigns launched yet.
+                                            No drives launched yet.
                                         </li>
                                     </ul>
                                 </div>
@@ -1368,7 +1368,7 @@ const App = {
                 <div class="modal-dialog modal-dialog-centered modal-lg">
                     <div class="modal-content border-0 shadow rounded-3 overflow-hidden">
                         <div class="modal-header bg-light border-bottom px-4 py-3">
-                            <h6 class="modal-title fw-bold text-dark mb-0">Campaign Details: {{ adminState.driveModal.data.title }}</h6>
+                            <h6 class="modal-title fw-bold text-dark mb-0">Drive Details: {{ adminState.driveModal.data.title }}</h6>
                             <button class="btn-close shadow-none" @click="closeDriveDetails"></button>
                         </div>
                         <div class="modal-body p-4 bg-white">
