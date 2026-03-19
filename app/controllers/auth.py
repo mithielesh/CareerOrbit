@@ -40,7 +40,7 @@ def login():
 @bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    email = data.get('email')
+    email = data.get('email').lower()
     password = data.get('password')
     role = data.get('role') # Must be 'student' or 'company'
     name = data.get('name')
