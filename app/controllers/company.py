@@ -32,6 +32,11 @@ def create_drive():
         deadline = datetime.strptime(data.get('application_deadline'), '%Y-%m-%d').date()
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+    
+    if(start_d < datetime.today().date() or deadline < datetime.today().date()) :
+        return jsonify({"error": "The dates cannot be in the past"}), 400
+    if(start_d > deadline) :
+        return jsonify({"error": "The start date cannot be after the end date"}), 400
 
     new_drive = PlacementDrive(
         company_id=company.id,
